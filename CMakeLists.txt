@@ -33,7 +33,7 @@ else()
     set(CMAKE_TOOLCHAIN_FILE "${RGBX_SDK_DIR}/cmake/toolchains/wasm.cmake")
 endif()
 
-project(my_extension C CXX)
+project(plasma C CXX)
 
 include("${RGBX_SDK_DIR}/cmake/rgbx-sdk-config.cmake")
 
