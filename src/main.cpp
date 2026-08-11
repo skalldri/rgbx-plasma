@@ -60,6 +60,15 @@ class Plasma : public rgbx::Animation {
         const uint8_t cg = (color >> 8) & 0xFF;
         const uint8_t cb = color & 0xFF;
 
+        /* The far end of the gradient. Defaults to black, which is exactly what the
+         * animation did before this parameter existed: the tint was scaled by the wave
+         * value, so a trough rendered (0,0,0). Anyone who does not touch this sees no
+         * change. */
+        const uint32_t bg = paramColor(3);
+        const uint8_t br = (bg >> 16) & 0xFF;
+        const uint8_t bgc = (bg >> 8) & 0xFF;
+        const uint8_t bb = bg & 0xFF;
+
         /* Invert flips the plasma's brightness gradient (light<->dark),
          * effectively inverting the palette while keeping the same tint. */
         const bool invert = paramBool(2);
@@ -81,19 +90,37 @@ class Plasma : public rgbx::Animation {
                     v = 255.0f - v;
                 }
                 const uint32_t vi = static_cast<uint32_t>(v);
-                setPixel(x, y, static_cast<uint8_t>(cr * vi / 255u),
-                         static_cast<uint8_t>(cg * vi / 255u),
-                         static_cast<uint8_t>(cb * vi / 255u));
+                /* Interpolate background -> color instead of scaling the colour toward
+                 * black. Signed intermediates because the background may be BRIGHTER than
+                 * the tint (white background, dark tint), so the delta goes negative. */
+                setPixel(x, y, lerp8(br, cr, vi), lerp8(bgc, cg, vi), lerp8(bb, cb, vi));
             }
         }
     }
 
    private:
+    /* a + (b - a) * t / 255, in signed arithmetic. Integer maths on purpose: this runs
+     * once per pixel per tick inside the extension's CPU budget. */
+    static uint8_t lerp8(uint8_t a, uint8_t b, uint32_t t) {
+        const int32_t delta = static_cast<int32_t>(b) - static_cast<int32_t>(a);
+        return static_cast<uint8_t>(static_cast<int32_t>(a) +
+                                    delta * static_cast<int32_t>(t) / 255);
+    }
+
     uint32_t t_ms_ = 0;
 };
 
 }  // namespace
 
+/* "Background" is APPENDED rather than inserted next to "Color", so Speed/Color/Invert
+ * keep the indices any existing `ext param <slot> <idx>` muscle memory and docs use.
+ *
+ * Persisted values reset either way: the firmware's parameter blob carries an
+ * order-sensitive fingerprint over the manifest's param shape, and apply_blob() discards
+ * a blob whose fingerprint no longer matches — which is what stops an old blob being
+ * applied positionally to the wrong parameters. So upgrading to this build returns
+ * Plasma's settings to the defaults below, once. */
 RGBX_ANIMATION(Plasma, "Plasma", 40, 12, RGBX_PARAM("Speed", RGBX_PARAM_UINT32, 50),
                RGBX_PARAM("Color", RGBX_PARAM_COLOR, 0x00FF40FF),
-               RGBX_PARAM("Invert", RGBX_PARAM_BOOL, 0));
+               RGBX_PARAM("Invert", RGBX_PARAM_BOOL, 0),
+               RGBX_PARAM("Background", RGBX_PARAM_COLOR, 0x00000000));
