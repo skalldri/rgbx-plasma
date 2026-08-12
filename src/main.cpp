@@ -50,9 +50,21 @@ class Plasma : public rgbx::Animation {
     void tick(uint32_t dt_ms) override {
         /* speed is a percentage of nominal (50 == 1x).
          *
-         * No overflow: t_ms_ < kPeriodMs and the increment is at most
-         * UINT32_MAX/50 == 85899345, so the sum stays well under 2^32. */
-        t_ms_ = (t_ms_ + dt_ms * paramU32(0) / 50u) % kPeriodMs;
+         * The multiply is widened to 64 bits because `*` and `/` share precedence and
+         * associate left-to-right, so `dt_ms * paramU32(0) / 50u` multiplies FIRST, in
+         * 32 bits. Speed is RGBX_PARAM_UINT32 and the host's write_param() memcpys the
+         * value with no range check, so a client can write the full range: at dt_ms = 11,
+         * Speed = 390451573 gives 4294967303, which wraps to 7, and 7/50 == 0 — the
+         * animation freezes while the app shows maximum speed, with the response
+         * non-monotonic above roughly 390M rather than clamped. (The old comment here
+         * defended only the ADDITION, which was never the overflowing step.)
+         *
+         * Reducing the step before adding keeps the sum in 32 bits regardless of input.
+         * __aeabi_uldivmod is on the SDK's allowed-symbols list, and this is once per
+         * tick — negligible against 480 pixels x 3 sinf calls. */
+        const uint32_t step = static_cast<uint32_t>(
+            ((static_cast<uint64_t>(dt_ms) * paramU32(0)) / 50u) % kPeriodMs);
+        t_ms_ = (t_ms_ + step) % kPeriodMs;
         const float t = static_cast<float>(t_ms_) * 0.001f;
 
         const uint32_t color = paramColor(1);
@@ -100,7 +112,18 @@ class Plasma : public rgbx::Animation {
 
    private:
     /* a + (b - a) * t / 255, in signed arithmetic. Integer maths on purpose: this runs
-     * once per pixel per tick inside the extension's CPU budget. */
+     * once per pixel per tick inside the extension's CPU budget.
+     *
+     * Left exactly as it was, deliberately. skalldri/rgb-sunglasses#3 proposed hoisting
+     * `b - a` out of the pixel loops (it is a frame constant, so the call recomputes it
+     * 40*12*3 = 1440 times per tick) and reworking the signed /255 into an unsigned one,
+     * on the grounds that a signed divide forces sign correction where an unsigned one
+     * strength-reduces to a multiply-high plus shift. Both were MEASURED and both are
+     * wrong here: the compiler already hoists the invariant subtraction, and splitting
+     * magnitude from direction to get the unsigned divide costs a per-pixel branch that
+     * is dearer than the divide it saves. Measured on proto0, 3355 vs 2906 ticks at
+     * default params: 3784 us/tick as written, 3937 us with that rewrite — 4% SLOWER —
+     * and 158 vs 223 emitted instructions. Do not "optimize" this without measuring. */
     static uint8_t lerp8(uint8_t a, uint8_t b, uint32_t t) {
         const int32_t delta = static_cast<int32_t>(b) - static_cast<int32_t>(a);
         return static_cast<uint8_t>(static_cast<int32_t>(a) +
