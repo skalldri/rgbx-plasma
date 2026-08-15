@@ -35,8 +35,9 @@ constexpr float kTau = 6.2831853f;
  * multi-precision Payne-Hanek reduction whose cost keeps GROWING with the
  * argument's exponent. This animation previously let t_ms_ free-run, so the three
  * waves crossed 201 at t ~= 111 s, 174 s and 279 s and the tick cost climbed a
- * staircase from 3.4 ms to 25 ms, overrunning the 11.1 ms render interval on
- * essentially every frame (skalldri/rgb-sunglasses#304).
+ * staircase from 3.4 ms to 25 ms, overrunning the render interval — 11.1 ms in
+ * those days; 33.3 ms since skalldri/rgb-sunglasses#376 — on essentially every
+ * frame (skalldri/rgb-sunglasses#304).
  *
  * Bounded here, the largest argument is 1.7*62.83 + (fx+fy)*kTau = 118.7 — and
  * that holds for ANY Speed value, because the bound is on the accumulator rather
@@ -53,10 +54,11 @@ class Plasma : public rgbx::Animation {
          * The multiply is widened to 64 bits because `*` and `/` share precedence and
          * associate left-to-right, so `dt_ms * paramU32(0) / 50u` multiplies FIRST, in
          * 32 bits. Speed is RGBX_PARAM_UINT32 and the host's write_param() memcpys the
-         * value with no range check, so a client can write the full range: at dt_ms = 11,
-         * Speed = 390451573 gives 4294967303, which wraps to 7, and 7/50 == 0 — the
+         * value with no range check, so a client can write the full range: at the
+         * dt_ms = 33 the firmware passes since skalldri/rgb-sunglasses#376,
+         * Speed = 130150525 gives 4294967325, which wraps to 29, and 29/50 == 0 — the
          * animation freezes while the app shows maximum speed, with the response
-         * non-monotonic above roughly 390M rather than clamped. (The old comment here
+         * non-monotonic above roughly 130M rather than clamped. (The old comment here
          * defended only the ADDITION, which was never the overflowing step.)
          *
          * Reducing the step before adding keeps the sum in 32 bits regardless of input.
