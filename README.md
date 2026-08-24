@@ -21,6 +21,13 @@ approximations became real `sinf()`.
 produces `build/arm/plasma.llext` (device) and `build/wasm/plasma.wasm`
 (simulator — drag onto <https://rgb-sunglasses.autom8ed.com/sim/>).
 
+Prerequisites: bash, cmake ≥ 3.21, Node.js ≥ 20, curl, tar. `build.sh` checks the
+Node version before it configures anything — the SDK's wasm gate
+(`check-wasm.mjs`) needs ≥ 20, and an older one fails the wasm link with a bare
+`SyntaxError` from inside the SDK. If you upgrade Node after a build, re-run
+`./build.sh -URGBX_NODE`: CMake cached the old interpreter's path at configure
+time and keeps using it otherwise.
+
 ## How this reaches devices
 
 Every `fw-v*` firmware release rebuilds this repo from its registry-pinned
